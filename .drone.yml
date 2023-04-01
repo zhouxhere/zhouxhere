@@ -1,0 +1,73 @@
+kind: pipeline
+type: docker
+name: default
+
+node:
+  name: ctyun
+
+volumes:
+  - name: html
+    host:
+      path: /opt/docker/volumes/zhouxhere_data/_data
+
+trigger:
+  branch: 
+  - master
+
+steps:
+  - name: build&deploy
+    image: drone/git
+    volumes:
+      - name: html
+        path: /tmp/html
+    commands:
+      - sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
+      - apk update
+      - apk add hugo openssh
+      - mkdir $HOME/.ssh && echo "$ssh_key" > $HOME/.ssh/id_rsa && chmod 600 $HOME/.ssh/id_rsa
+      - ssh-keyscan github.com >> ~/.ssh/known_hosts
+      - git fetch --all
+      - git submodule init
+      - git submodule update --recursive --remote
+      - sed -i 's/gitRepo = ""/gitRepo = "https:\\/\\/git.zhouxhere.com\\/zhouxhere\\/zhouxhere.git"/g' config.toml
+      # - sed -i 's/icp = /# icp = /g' config.toml
+      - hugo config check
+      - hugo --minify
+      - rm -rf /tmp/html/*
+      - cp -r public/* /tmp/html/
+      # - git checkout .
+      # - git switch pages
+      # - rm -rf ./*
+      # - cp -r /tmp/html/* ./
+      # - git add .
+      # - git commit -m "${DRONE_COMMIT}"
+      # - git push origin pages    environment:
+    environment:
+      ssh_key:
+        from_secret: ssh_key
+  
+  - name: notify
+    image: lizheming/drone-wechat
+    settings:
+      corpid:
+        from_secret: wechat_corpid
+      corp_secret:
+        from_secret: wechat_corpsecret
+      agent_id:
+        from_secret: wechat_agentid
+      to_user: XuZhou
+      to_tag: ${DRONE_REPO_NAME}
+      msg_url: ${DRONE_BUILD_LINK}
+      safe: 1
+      btn_txt: more
+      title: drone
+      message: >
+        项目名称：${DRONE_REPO_NAME}
+
+        执行序号：{{build.number}}
+
+        开始时间：{{build.started|datetime}}
+
+        结束时间：{{build.finished|datetime}}
+
+        执行结果：{%if success %}成功{% else %}失败{% endif %}
